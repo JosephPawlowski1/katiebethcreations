@@ -81,6 +81,52 @@ Note `creationsbykatiebeth.*` is legacy — it predates the rename and matches n
 - **HTTPS is issued by GitHub only after DNS resolves to it.** After any DNS change, allow
   15-60 min, then enable *Enforce HTTPS* in repo Settings > Pages.
 
+## Alternative: Cloudflare (considered, not adopted)
+
+Evaluated on 2026-09-26 and **declined** — the current setup was already working by then, and
+switching would have meant hours of downtime to land in the same place. Documented here because
+the tradeoffs still apply if the Squarespace side becomes painful.
+
+Two separable decisions, often confused:
+
+1. **Who answers DNS** — Squarespace (today) vs Cloudflare
+2. **Who serves the files** — GitHub Pages (today) vs Cloudflare Pages
+
+They can be mixed. **Cloudflare DNS + GitHub Pages hosting** is the cheapest useful change: it
+removes the Squarespace DNS friction without touching the repo or deploy flow.
+
+### What moving to Cloudflare DNS would fix
+
+- **The repeated Google re-auth prompts.** Squarespace re-verifies roughly once per domain while
+  editing records. This cost several interruptions during setup.
+- **Squarespace re-adding its preset records.** The "Squarespace Defaults" preset comes back when
+  you reconnect a site and silently breaks external hosting (see the DNS section above).
+- **The 24-48 hour wait on alias redirects.** Cloudflare *Redirect Rules* apply in seconds and
+  are free, replacing the four Squarespace forwarding rules.
+- **Multiple custom domains.** Cloudflare Pages allows many per project; GitHub Pages allows
+  exactly one, which is why the aliases need forwarding today.
+
+### What it would cost
+
+- Free. Cloudflare's DNS and Pages free tiers both cover this site.
+- Squarespace stays the **registrar** — renewals and ownership are unaffected. Only the
+  nameservers change.
+
+### Why it was not done
+
+- Nameserver changes propagate over hours, not minutes; the site can be intermittently
+  unreachable during the switch.
+- Requires creating a Cloudflare account.
+- **All records must be recreated**, including the email TXT records (SPF/DMARC/DKIM). Cloudflare's
+  onboarding scan imports most automatically, but a missed record breaks email delivery silently.
+  Verify each one against the rollback list before flipping nameservers.
+- The benefit is mostly one-time friction that has already been paid.
+
+### When to revisit
+
+If Squarespace clobbers the DNS records again, if the domains move off Squarespace entirely, or
+if the site outgrows a single static page and needs redirect rules, custom headers, or staging.
+
 ## Conventions
 
 - The logo art has an **opaque white background**, not transparency. `styles.css` uses
