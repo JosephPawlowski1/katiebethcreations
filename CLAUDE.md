@@ -79,7 +79,72 @@ Note `creationsbykatiebeth.*` is legacy — it predates the rename and matches n
   appears after a reload.
 - **Forwarding rules take 24-48 hours** to start working, per Squarespace's own notice.
 - **HTTPS is issued by GitHub only after DNS resolves to it.** After any DNS change, allow
-  15-60 min, then enable *Enforce HTTPS* in repo Settings > Pages.
+  15-60 min, then enable *Enforce HTTPS* in repo Settings > Pages. If it takes much longer than
+  that, see below - it is probably stuck rather than slow.
+
+## Known issue: GitHub Pages certificate stalls at "not requested"
+
+Hit on 2026-09-26 during initial setup. HTTPS stayed dead for hours after DNS was already correct.
+
+### Symptom
+
+`https://katiebethcreations.com` does not load, while `http://` returns 200 normally. The TLS
+handshake *succeeds* - the failure is a certificate mismatch, not a connection problem:
+
+```
+$ curl -sv https://katiebethcreations.com/ 2>&1 | grep -E 'subject:|subjectAltName'
+*  subject: CN=*.github.io
+*  subjectAltName does not match host name katiebethcreations.com
+```
+
+GitHub is serving its generic wildcard cert because no certificate exists for the custom domain.
+
+### Diagnosis
+
+Check the certificate state - this is the authoritative signal, not the browser:
+
+```bash
+gh api /repos/JosephPawlowski1/katiebethcreations/pages \
+  --jq '{cname, state: .https_certificate.state, desc: .https_certificate.description}'
+```
+
+`state: null` means the certificate was **never requested**. That is different from a certificate
+that is queued or pending: waiting will not fix it, because nothing is in flight. A healthy
+request progresses `authorization_created` -> `authorization_pending` -> `authorized` -> `issued`.
+
+### Fix
+
+Clear and re-add the custom domain to force GitHub to start issuance over:
+
+```bash
+gh api -X PUT /repos/JosephPawlowski1/katiebethcreations/pages -f 'cname='
+sleep 15
+gh api -X PUT /repos/JosephPawlowski1/katiebethcreations/pages -f 'cname=katiebethcreations.com'
+```
+
+This moved `state` from `null` to `authorization_created` immediately.
+
+**Afterwards, verify the `CNAME` file still exists on `main`** - clearing the domain through the
+API can delete it, which would break the custom domain entirely:
+
+```bash
+gh api /repos/JosephPawlowski1/katiebethcreations/contents/CNAME --jq '.content' | base64 -d
+```
+
+The site stays up on HTTP throughout; this does not cause downtime.
+
+### Gotchas within the fix
+
+- Passing `https_enforced` while no certificate exists fails with a misleading
+  `404 The certificate does not exist yet`. Set `cname` alone first, then enable
+  *Enforce HTTPS* only once `state` is `issued`.
+- Do not enable *Enforce HTTPS* before issuance completes - it makes the site unreachable rather
+  than merely insecure.
+
+### If it stalls again after the fix
+
+Suspect something interfering with GitHub's domain validation. The leftover
+`_domainconnect` CNAME from Squarespace is the first thing to rule out.
 
 ## Alternative: Cloudflare (considered, not adopted)
 
