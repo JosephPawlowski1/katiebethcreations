@@ -47,10 +47,37 @@ you reconnect a site), the site breaks; delete it again.
 
 Email TXT records (SPF/DMARC/DKIM) and the `_domainconnect` CNAME are unrelated — leave them.
 
+## Alias domains
+
+Four other domains are owned (all registered at Squarespace) and **301-redirect** to
+`https://katiebethcreations.com` via Squarespace *Domain Forwarding* (Website tab > Domain
+Forwarding), each covering both the root (`@`) and `www`, with path forwarding off:
+
+| Domain                   | Renews       |
+|--------------------------|--------------|
+| creationsbykatiebeth.com | Aug 16, 2027 |
+| creationsbykatiebeth.net | Aug 16, 2027 |
+| katiebethcreations.net   | Aug 23, 2027 |
+| katiebethcreations.store | Aug 23, 2027 |
+
+`katiebethcreations.com` itself renews Aug 23, 2027 and is the canonical domain — it is the only
+one pointed at GitHub with A records.
+
+**Do not point aliases at GitHub's IPs.** GitHub Pages serves exactly one custom domain per repo
+(whatever is in `CNAME`); any other hostname resolving to its IPs gets a 404. Forwarding is the
+only correct mechanism for aliases.
+
+Note `creationsbykatiebeth.*` is legacy — it predates the rename and matches no current handle.
+
 ### Gotchas
 
-- **Squarespace DNS re-prompts for Google sign-in** partway through editing records. Expect to
-  re-authenticate mid-session; records saved before the prompt are kept.
+- **Squarespace DNS re-prompts for Google sign-in** partway through editing records, roughly once
+  per domain. Expect to re-authenticate mid-session; records saved before the prompt are kept.
+- **Squarespace forms ignore programmatically-set values.** Setting an input's value directly
+  (e.g. via JS or a form-fill tool) leaves their React state empty, so Save silently does nothing
+  and no rule is created. Click the field and type real keystrokes instead, then confirm the rule
+  appears after a reload.
+- **Forwarding rules take 24-48 hours** to start working, per Squarespace's own notice.
 - **HTTPS is issued by GitHub only after DNS resolves to it.** After any DNS change, allow
   15-60 min, then enable *Enforce HTTPS* in repo Settings > Pages.
 
