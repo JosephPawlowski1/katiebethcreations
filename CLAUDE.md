@@ -141,6 +141,17 @@ The site stays up on HTTP throughout; this does not cause downtime.
 - Do not enable *Enforce HTTPS* before issuance completes - it makes the site unreachable rather
   than merely insecure.
 
+### The fix rewrites the repo behind your back
+
+Clearing and re-adding `cname` makes GitHub push two commits of its own - `Delete CNAME` and
+`Create CNAME`. Your next `git push` will then be **rejected** as non-fast-forward, even though
+you changed nothing locally. Fetch and rebase onto them; the net CNAME content is unchanged
+(GitHub's version has no trailing newline, which is fine):
+
+```bash
+git fetch origin && git rebase origin/main
+```
+
 ### If it stalls again after the fix
 
 Suspect something interfering with GitHub's domain validation. The leftover
