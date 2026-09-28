@@ -2,19 +2,35 @@
 
 Static one-page link site for KatieBeth Creations. Plain HTML/CSS, no build step.
 
+Live at **https://katiebethcreations.com**.
+
+## Architecture
+
+Three providers, each doing one job. Keeping them straight is the key to not breaking this:
+
+| Layer | Provider | Notes |
+|-------|----------|-------|
+| Registrar | **Squarespace** | Owns the registration + renewal only |
+| DNS | **Cloudflare** | Authoritative since 2026-09-28 |
+| TLS + CDN | **Cloudflare** | Universal SSL, proxies all traffic |
+| Origin (files) | **GitHub Pages** | Serves the repo; never visitor-facing directly |
+
+Traffic path: visitor → Cloudflare edge (TLS terminates here) → GitHub Pages origin.
+
+Squarespace no longer serves DNS for this domain. **Its DNS panel still shows stale records —
+ignore it.** Editing records there has no effect.
+
 ## Files
 
 - `index.html` — the page (logo, four social link cards, footer)
 - `styles.css` — palette sampled from the logo
 - `logo.webp` — logo artwork
-- `CNAME` — **required by GitHub Pages**; holds `katiebethcreations.com`. Do not delete.
+- `CNAME` — holds `katiebethcreations.com`; GitHub Pages needs it to route the host header to
+  this repo. Still required even though Cloudflare fronts the site. Do not delete.
 
-## Hosting
+## Deploying
 
-Hosted free on **GitHub Pages** from [JosephPawlowski1/katiebethcreations](https://github.com/JosephPawlowski1/katiebethcreations),
-branch `main`, folder root. Public repo (required for Pages on a free account).
-
-**Deploy = push to `main`.** Pages rebuilds automatically; no CI, no build step.
+**Deploy = push to `main`.** GitHub Pages rebuilds automatically; no CI, no build step.
 
 ```bash
 git add -A && git commit -m "..." && git push
@@ -26,32 +42,64 @@ Check a deploy:
 gh api /repos/JosephPawlowski1/katiebethcreations/pages/builds/latest --jq '.status, .error.message'
 ```
 
-## DNS
+Cloudflare caches aggressively. After a deploy, purge the cache if a change does not appear
+(Cloudflare dashboard → Caching → Purge Everything).
 
-Registrar and DNS are **Squarespace**; hosting is **GitHub**. The two are separate — the
-Squarespace *website* was never used and its trial was left to lapse (expired Oct 10, 2026).
+## DNS (Cloudflare)
 
-Custom records at Squarespace (DNS Settings > Custom records):
+Zone ID `3818b36ba3fcc78f8968ffae9753beda`, account `f85a8fe3ad515231bebea3cb5ca5ffbb`, Free plan.
 
-| Type  | Name | Data                       |
-|-------|------|----------------------------|
-| A     | @    | 185.199.108.153            |
-| A     | @    | 185.199.109.153            |
-| A     | @    | 185.199.110.153            |
-| A     | @    | 185.199.111.153            |
-| CNAME | www  | josephpawlowski1.github.io |
+Nameservers set at Squarespace (DNS → Domain Nameservers → Use Custom Nameservers):
 
-The **"Squarespace Defaults" preset was deleted** — its `A @ -> 198.185.x.x` records pointed at
-the Squarespace site and conflict with GitHub's. If it ever reappears (Squarespace re-adds it when
-you reconnect a site), the site breaks; delete it again.
+```
+dax.ns.cloudflare.com
+jacqueline.ns.cloudflare.com
+```
 
-Email TXT records (SPF/DMARC/DKIM) and the `_domainconnect` CNAME are unrelated — leave them.
+Records — the 4 A records and `www` are **proxied** (orange cloud); the TXT records are DNS-only:
+
+| Type  | Name           | Value                                          | Proxy |
+|-------|----------------|------------------------------------------------|-------|
+| A     | @              | 185.199.108.153                                | on    |
+| A     | @              | 185.199.109.153                                | on    |
+| A     | @              | 185.199.110.153                                | on    |
+| A     | @              | 185.199.111.153                                | on    |
+| CNAME | www            | josephpawlowski1.github.io                     | on    |
+| TXT   | @              | `v=spf1 -all`                                  | —     |
+| TXT   | _dmarc         | `v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s` | —   |
+| TXT   | _domainkey     | `v=DKIM1; p=`                                  | —     |
+| CNAME | _domainconnect | _domainconnect.domains.squarespace.com         | on    |
+
+No MX records — there is no email on this domain. The three TXT records are the SPF/DMARC/DKIM
+policy and must survive any future move.
+
+### SSL settings that matter
+
+- **Encryption mode: `Full`**, pinned explicitly — *not* `Automatic`. GitHub's origin serves a
+  `*.github.io` certificate that will never match this domain, so `Full (Strict)` **breaks the
+  site**. `Automatic` can upgrade itself to Strict, which is why it is pinned.
+- **Always Use HTTPS: on.** `http://` → 301 → `https://`, apex and www.
+- Universal SSL covers `katiebethcreations.com` and `*.katiebethcreations.com`.
+- DNSSEC is **off** — Squarespace required disabling it to change nameservers.
+
+### Verifying
+
+`dig` against a public resolver; the apex should return **Cloudflare** IPs (104.x / 172.67.x),
+not GitHub's 185.199.x:
+
+```bash
+dig +short katiebethcreations.com A @1.1.1.1
+curl -sI https://katiebethcreations.com/ | head -3
+curl -sv https://katiebethcreations.com/ 2>&1 | grep -E 'subject:|issuer:'
+```
+
+Expect `CN=katiebethcreations.com`, issuer Let's Encrypt, `server: cloudflare`.
 
 ## Alias domains
 
-Four other domains are owned (all registered at Squarespace) and **301-redirect** to
-`https://katiebethcreations.com` via Squarespace *Domain Forwarding* (Website tab > Domain
-Forwarding), each covering both the root (`@`) and `www`, with path forwarding off:
+Four other domains, all registered at Squarespace, **301-redirect** to
+`https://katiebethcreations.com` via Squarespace *Domain Forwarding* (Website tab → Domain
+Forwarding), each covering root (`@`) and `www`, path forwarding off:
 
 | Domain                   | Renews       |
 |--------------------------|--------------|
@@ -60,61 +108,45 @@ Forwarding), each covering both the root (`@`) and `www`, with path forwarding o
 | katiebethcreations.net   | Aug 23, 2027 |
 | katiebethcreations.store | Aug 23, 2027 |
 
-`katiebethcreations.com` itself renews Aug 23, 2027 and is the canonical domain — it is the only
-one pointed at GitHub with A records.
+These still use **Squarespace** nameservers — only katiebethcreations.com moved to Cloudflare.
+Their forwarding rules are unaffected by that move.
 
-**Do not point aliases at GitHub's IPs.** GitHub Pages serves exactly one custom domain per repo
-(whatever is in `CNAME`); any other hostname resolving to its IPs gets a 404. Forwarding is the
-only correct mechanism for aliases.
+`katiebethcreations.com` renews Aug 8, 2027 ($20) and is canonical.
 
 Note `creationsbykatiebeth.*` is legacy — it predates the rename and matches no current handle.
 
-### Gotchas
+**Do not point aliases at GitHub's IPs.** GitHub Pages serves exactly one custom domain per repo
+(whatever is in `CNAME`); any other hostname resolving to its IPs gets a 404. If you ever want
+them served rather than redirected, move them to Cloudflare and use Redirect Rules, which apply
+in seconds instead of Squarespace's 24–48 hours.
 
-- **Squarespace DNS re-prompts for Google sign-in** partway through editing records, roughly once
-  per domain. Expect to re-authenticate mid-session; records saved before the prompt are kept.
-- **Squarespace forms ignore programmatically-set values.** Setting an input's value directly
-  (e.g. via JS or a form-fill tool) leaves their React state empty, so Save silently does nothing
-  and no rule is created. Click the field and type real keystrokes instead, then confirm the rule
-  appears after a reload.
-- **Forwarding rules take 24-48 hours** to start working, per Squarespace's own notice.
-- **HTTPS is issued by GitHub only after DNS resolves to it.** After any DNS change, allow
-  15-60 min, then enable *Enforce HTTPS* in repo Settings > Pages. If it takes much longer than
-  that, see below - it is probably stuck rather than slow.
+## Why Cloudflare (history — read before "simplifying" this)
 
-## Known issue: GitHub Pages certificate stalls at "not requested"
+The site originally ran on GitHub Pages with DNS at Squarespace. **GitHub never issued the TLS
+certificate.** It sat at `state: null` — meaning the request was never created, not queued — for
+two full days, while DNS, CAA and the ACME challenge path were all verifiably correct. Clearing
+and re-adding the custom domain moved it to `authorization_created`, where it stalled again.
 
-Hit on 2026-09-26 during initial setup. HTTPS stayed dead for hours after DNS was already correct.
+Cloudflare issued a working certificate within minutes of the zone activating.
 
-### Symptom
+So: **the GitHub Pages certificate is still broken and always was.** It does not matter, because
+Cloudflare terminates TLS at the edge and GitHub is only the origin. Do not "fix" this by pointing
+DNS straight at GitHub again — that is the broken configuration this setup exists to route around.
 
-`https://katiebethcreations.com` does not load, while `http://` returns 200 normally. The TLS
-handshake *succeeds* - the failure is a certificate mismatch, not a connection problem:
+### Diagnosing a stuck GitHub Pages certificate
 
-```
-$ curl -sv https://katiebethcreations.com/ 2>&1 | grep -E 'subject:|subjectAltName'
-*  subject: CN=*.github.io
-*  subjectAltName does not match host name katiebethcreations.com
-```
-
-GitHub is serving its generic wildcard cert because no certificate exists for the custom domain.
-
-### Diagnosis
-
-Check the certificate state - this is the authoritative signal, not the browser:
+Symptom: HTTPS fails with a certificate *mismatch* (handshake succeeds), origin serves
+`CN=*.github.io`:
 
 ```bash
 gh api /repos/JosephPawlowski1/katiebethcreations/pages \
-  --jq '{cname, state: .https_certificate.state, desc: .https_certificate.description}'
+  --jq '{cname, state: .https_certificate.state}'
 ```
 
-`state: null` means the certificate was **never requested**. That is different from a certificate
-that is queued or pending: waiting will not fix it, because nothing is in flight. A healthy
-request progresses `authorization_created` -> `authorization_pending` -> `authorized` -> `issued`.
+`state: null` = never requested; waiting will not help. Healthy progression is
+`authorization_created → authorization_pending → authorized → issued`.
 
-### Fix
-
-Clear and re-add the custom domain to force GitHub to start issuance over:
+The clear/re-add cycle (which did **not** ultimately work here):
 
 ```bash
 gh api -X PUT /repos/JosephPawlowski1/katiebethcreations/pages -f 'cname='
@@ -122,86 +154,30 @@ sleep 15
 gh api -X PUT /repos/JosephPawlowski1/katiebethcreations/pages -f 'cname=katiebethcreations.com'
 ```
 
-This moved `state` from `null` to `authorization_created` immediately.
-
-**Afterwards, verify the `CNAME` file still exists on `main`** - clearing the domain through the
-API can delete it, which would break the custom domain entirely:
-
-```bash
-gh api /repos/JosephPawlowski1/katiebethcreations/contents/CNAME --jq '.content' | base64 -d
-```
-
-The site stays up on HTTP throughout; this does not cause downtime.
-
-### Gotchas within the fix
-
-- Passing `https_enforced` while no certificate exists fails with a misleading
-  `404 The certificate does not exist yet`. Set `cname` alone first, then enable
-  *Enforce HTTPS* only once `state` is `issued`.
-- Do not enable *Enforce HTTPS* before issuance completes - it makes the site unreachable rather
-  than merely insecure.
-
-### The fix rewrites the repo behind your back
-
-Clearing and re-adding `cname` makes GitHub push two commits of its own - `Delete CNAME` and
-`Create CNAME`. Your next `git push` will then be **rejected** as non-fast-forward, even though
-you changed nothing locally. Fetch and rebase onto them; the net CNAME content is unchanged
-(GitHub's version has no trailing newline, which is fine):
+**This rewrites the repo behind your back** — GitHub pushes `Delete CNAME` and `Create CNAME`
+commits, so your next `git push` is rejected as non-fast-forward despite no local changes:
 
 ```bash
 git fetch origin && git rebase origin/main
 ```
 
-### If it stalls again after the fix
+Also: passing `https_enforced` while no certificate exists fails with a misleading
+`404 The certificate does not exist yet`.
 
-Suspect something interfering with GitHub's domain validation. The leftover
-`_domainconnect` CNAME from Squarespace is the first thing to rule out.
+## Gotchas
 
-## Alternative: Cloudflare (considered, not adopted)
-
-Evaluated on 2026-09-26 and **declined** — the current setup was already working by then, and
-switching would have meant hours of downtime to land in the same place. Documented here because
-the tradeoffs still apply if the Squarespace side becomes painful.
-
-Two separable decisions, often confused:
-
-1. **Who answers DNS** — Squarespace (today) vs Cloudflare
-2. **Who serves the files** — GitHub Pages (today) vs Cloudflare Pages
-
-They can be mixed. **Cloudflare DNS + GitHub Pages hosting** is the cheapest useful change: it
-removes the Squarespace DNS friction without touching the repo or deploy flow.
-
-### What moving to Cloudflare DNS would fix
-
-- **The repeated Google re-auth prompts.** Squarespace re-verifies roughly once per domain while
-  editing records. This cost several interruptions during setup.
-- **Squarespace re-adding its preset records.** The "Squarespace Defaults" preset comes back when
-  you reconnect a site and silently breaks external hosting (see the DNS section above).
-- **The 24-48 hour wait on alias redirects.** Cloudflare *Redirect Rules* apply in seconds and
-  are free, replacing the four Squarespace forwarding rules.
-- **Multiple custom domains.** Cloudflare Pages allows many per project; GitHub Pages allows
-  exactly one, which is why the aliases need forwarding today.
-
-### What it would cost
-
-- Free. Cloudflare's DNS and Pages free tiers both cover this site.
-- Squarespace stays the **registrar** — renewals and ownership are unaffected. Only the
-  nameservers change.
-
-### Why it was not done
-
-- Nameserver changes propagate over hours, not minutes; the site can be intermittently
-  unreachable during the switch.
-- Requires creating a Cloudflare account.
-- **All records must be recreated**, including the email TXT records (SPF/DMARC/DKIM). Cloudflare's
-  onboarding scan imports most automatically, but a missed record breaks email delivery silently.
-  Verify each one against the rollback list before flipping nameservers.
-- The benefit is mostly one-time friction that has already been paid.
-
-### When to revisit
-
-If Squarespace clobbers the DNS records again, if the domains move off Squarespace entirely, or
-if the site outgrows a single static page and needs redirect rules, custom headers, or staging.
+- **Squarespace re-prompts for Google sign-in** roughly once per domain while editing DNS or
+  forwarding. Records saved before the prompt are kept.
+- **Squarespace forms ignore programmatically-set values.** Setting an input's value directly
+  leaves their React state empty, so Save silently does nothing and no rule is created. Type real
+  keystrokes instead, then reload to confirm the rule actually exists.
+- **Squarespace forwarding rules take 24–48 hours** to start working, per their own notice.
+- **A local DNS cache will lie to you.** macOS `dscacheutil` held the old GitHub IPs for hours
+  after the switch, making the site look broken locally while it worked everywhere else. Check
+  `dig @1.1.1.1` before believing a failure, and use
+  `curl --resolve host:443:<ip>` to bypass the cache.
+- **The Squarespace website trial** (separate from the domain) expires **Oct 10, 2026**. It was
+  never used. Cancel it so it does not convert to a paid plan; do not cancel the domain.
 
 ## Conventions
 
