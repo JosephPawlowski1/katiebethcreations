@@ -1,8 +1,9 @@
 # katiebethcreations
 
-Static one-page link site for KatieBeth Creations. Plain HTML/CSS, no build step.
+Static one-page link site for KatiBeth Creative (formerly KatieBeth Creations). Plain HTML/CSS, no build step.
 
-Live at **https://katiebethcreations.com**.
+Live at **https://katibethcreative.com** (canonical since 2026-10-10). The old
+`katiebethcreations.com` 301-redirects here. The repo name is still `katiebethcreations`.
 
 ## Architecture
 
@@ -23,9 +24,11 @@ ignore it.** Editing records there has no effect.
 ## Files
 
 - `index.html` — the page (logo, four social link cards, footer)
-- `styles.css` — palette sampled from the logo
-- `logo.webp` — logo artwork
-- `CNAME` — holds `katiebethcreations.com`; GitHub Pages needs it to route the host header to
+- `styles.css` — palette sampled from the logos
+- `logo.png` — stacked "KatiBeth Creative" wordmark on a pale star (hero)
+- `icon.png` (192px), `favicon.png` (32px), `apple-touch-icon.png` (180px, white bg) — the "KC"
+  monogram with its star, minus the tiny wordmark (unreadable at favicon size). Also the footer badge.
+- `CNAME` — holds `katibethcreative.com`; GitHub Pages needs it to route the host header to
   this repo. Still required even though Cloudflare fronts the site. Do not delete.
 
 ## Deploying
@@ -42,21 +45,36 @@ Check a deploy:
 gh api /repos/JosephPawlowski1/katiebethcreations/pages/builds/latest --jq '.status, .error.message'
 ```
 
+To change the canonical domain, use `gh api -X PUT .../pages -f cname=<domain>` rather than editing
+`CNAME` by hand — it updates the Pages setting *and* commits the file (then `git pull`).
+
 Cloudflare caches aggressively. After a deploy, purge the cache if a change does not appear
 (Cloudflare dashboard → Caching → Purge Everything).
 
 ## DNS (Cloudflare)
 
-Zone ID `3818b36ba3fcc78f8968ffae9753beda`, account `f85a8fe3ad515231bebea3cb5ca5ffbb`, Free plan.
-
-Nameservers set at Squarespace (DNS → Domain Nameservers → Use Custom Nameservers):
+Account `f85a8fe3ad515231bebea3cb5ca5ffbb`, all zones on the Free plan. Every zone in this account
+gets the same nameserver pair, set at Squarespace (DNS → Domain Nameservers → Use Custom
+Nameservers; Squarespace forces DNSSEC off when you do this):
 
 ```
 dax.ns.cloudflare.com
 jacqueline.ns.cloudflare.com
 ```
 
-Records — the 4 A records and `www` are **proxied** (orange cloud); the TXT records are DNS-only:
+| Zone | Role | Config |
+|------|------|--------|
+| `katibethcreative.com` | **Canonical site** | Records below, SSL `Full`, Always Use HTTPS |
+| `katibethcreative.net` | Alias | Redirect Rule: all requests → 301 `https://katibethcreative.com` + path |
+| `katibethcreative.store` | Alias | Same Redirect Rule |
+| `katiebethcreations.com` (zone `3818b36ba3fcc78f8968ffae9753beda`) | Old name | Same Redirect Rule; old records left in place |
+
+The redirect-only zones keep the proxied Squarespace parking records from Cloudflare's import scan.
+They are never reached (the Redirect Rule fires at the edge first) but a **proxied** `@` and `www`
+must exist, or the rule has nothing to attach to.
+
+`katibethcreative.com` records — the 4 A records and `www` are **proxied** (orange cloud); the TXT
+records are DNS-only:
 
 | Type  | Name           | Value                                          | Proxy |
 |-------|----------------|------------------------------------------------|-------|
@@ -79,7 +97,8 @@ policy and must survive any future move.
   `*.github.io` certificate that will never match this domain, so `Full (Strict)` **breaks the
   site**. `Automatic` can upgrade itself to Strict, which is why it is pinned.
 - **Always Use HTTPS: on.** `http://` → 301 → `https://`, apex and www.
-- Universal SSL covers `katiebethcreations.com` and `*.katiebethcreations.com`.
+- Universal SSL covers each zone's apex and `*.` wildcard. It is issued only once the zone goes
+  **active**; until then HTTPS fails with a handshake error, not a mismatch.
 - DNSSEC is **off** — Squarespace required disabling it to change nameservers.
 
 ### Verifying
@@ -88,17 +107,26 @@ policy and must survive any future move.
 not GitHub's 185.199.x:
 
 ```bash
-dig +short katiebethcreations.com A @1.1.1.1
-curl -sI https://katiebethcreations.com/ | head -3
-curl -sv https://katiebethcreations.com/ 2>&1 | grep -E 'subject:|issuer:'
+dig +short katibethcreative.com A @1.1.1.1
+curl -sI https://katibethcreative.com/ | head -3                       # 200, server: cloudflare
+curl -sI https://katibethcreative.net/x | grep -i location             # https://katibethcreative.com/x
+curl -sI https://katiebethcreations.com/ | grep -i location            # https://katibethcreative.com/
 ```
-
-Expect `CN=katiebethcreations.com`, issuer Let's Encrypt, `server: cloudflare`.
 
 ## Alias domains
 
-Four other domains, all registered at Squarespace, **301-redirect** to
-`https://katiebethcreations.com` via Squarespace *Domain Forwarding* (Website tab → Domain
+All registered at Squarespace. The three newest (`katibethcreative.net`, `.store`, and the old
+`katiebethcreations.com`) redirect via **Cloudflare Redirect Rules** — see the DNS table above.
+
+| Domain                   | Renews       |
+|--------------------------|--------------|
+| katibethcreative.com     | Oct 10, 2027 (canonical) |
+| katibethcreative.net     | Oct 10, 2027 |
+| katibethcreative.store   | Oct 10, 2027 |
+| katiebethcreations.com   | Aug 8, 2027  |
+
+Four older domains still **301-redirect** to `https://katiebethcreations.com` (which then redirects
+again to the new name — two hops, harmless) via Squarespace *Domain Forwarding* (Website tab → Domain
 Forwarding), each covering root (`@`) and `www`, path forwarding off:
 
 | Domain                   | Renews       |
@@ -110,8 +138,6 @@ Forwarding), each covering root (`@`) and `www`, path forwarding off:
 
 These still use **Squarespace** nameservers — only katiebethcreations.com moved to Cloudflare.
 Their forwarding rules are unaffected by that move.
-
-`katiebethcreations.com` renews Aug 8, 2027 ($20) and is canonical.
 
 Note `creationsbykatiebeth.*` is legacy — it predates the rename and matches no current handle.
 
@@ -181,12 +207,15 @@ Also: passing `https_enforced` while no certificate exists fails with a misleadi
 
 ## Conventions
 
-- The logo art has an **opaque white background**, not transparency. `styles.css` uses
-  `mix-blend-mode: multiply` on `.logo` to drop the white into the cream card. This works only
-  because the card background is a flat color — on a gradient or photo, export the logo with a
-  real alpha channel instead.
-- Colors are CSS custom properties on `:root`, sampled from the logo. Reuse them rather than
-  introducing new hex values.
+- Brand colors (from the logos): pink `#bd4a77`, olive `#919d3d`, pale sage `#e9ebd8`. They are
+  CSS custom properties on `:root`; reuse them rather than introducing new hex values. `--olive` is
+  `#8e9a3b`, a hair darker than the logo, so white icons on it clear WCAG 3:1. Olive is too light
+  for small text — use `--olive-deep` or `--ink-soft` for that.
+- The logo PNGs have **real transparency**. The designer's originals ship on opaque white; they
+  were keyed by projecting each pixel onto the white→brand-color line. If new art arrives on
+  white, re-key it the same way rather than reaching for `mix-blend-mode: multiply`.
+- The pale sage star nearly vanishes on a sage background, which is why the card stays **white**
+  and only the page behind it is tinted.
 - Hover lift on `.link` is wrapped in `@media (hover: hover)` — without it the state sticks
   after a tap on touchscreens.
 - Page must stay usable at 320px wide with no horizontal scroll.
